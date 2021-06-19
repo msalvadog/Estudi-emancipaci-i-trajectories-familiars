@@ -1,0 +1,1369 @@
+library(sas7bdat)
+library(sqldf)
+library(plyr)
+library(dplyr)
+library(foreign)
+library(ggplot2)
+library(scales)
+library(survival)
+library(survminer)
+library("TraMineR")
+library("cluster")
+library(FactoMineR)
+library(factoextra)
+
+calendar <- read.spss("/Cohort-Data-W1-W6-SPSS/W1/COHORT_FA_USER.sav", to.data.frame=TRUE)
+calendar<-subset(calendar, select=c(1:5))
+calendar$IDPERS<-as.numeric(levels(calendar$IDPERS))[calendar$IDPERS]
+calendar$IDHOUS13<-as.numeric(levels(calendar$IDHOUS13))[calendar$IDHOUS13]
+calendar$ep_family<-as.numeric(levels(calendar$ep_family))[calendar$ep_family]
+calendar$family.a<-as.numeric(levels(calendar$family.a))[calendar$family.a]
+calendar$family.typ<-as.numeric(calendar$family.typ)
+
+
+#LECTURA DADES
+# W bases amb informació de la llar
+# Wp bases amb informació de l'individu
+
+w1<-read.sas7bdat("cohort13_h_user.sas7bdat")
+w1p<-read.sas7bdat("cohort13_p_user.sas7bdat")
+w2<-read.sas7bdat("/Cohort-Data-W1-W6-SAS/W2/cohort14_h_user.sas7bdat")
+w2p<-read.sas7bdat("/Cohort-Data-W1-W6-SAS/W2/cohort14_p_user.sas7bdat")
+w3<-read.sas7bdat("/Cohort-Data-W1-W6-SAS/W3/cohort15_h_user.sas7bdat")
+w3p<-read.sas7bdat("/Cohort-Data-W1-W6-SAS/W3/cohort15_p_user.sas7bdat")
+
+
+#Selecció  de variables que interessen de les bases W
+
+w1sel<-subset(w1,select=c(4,13,15,16,18,19,20,21,22,23,24,25,26,29,30))
+w2sel<-subset(w2,select=c(4,11,14,16,17,19,20,21,22,23,24,25,26,27,32,33,34))
+w3sel<-subset(w3,select=c(4,11,14,16,17,19,20,21,22,23,24,25,26,27,32,33,34))
+
+
+#Selecció  de variables que interessen de les bases WP
+
+w1psel<-subset(w1p,select=c(2,3,5,7,8,15))
+w2psel<-subset(w2p,select=c(4,5,7,8,13,354, 355,357))
+w3psel<-subset(w3p,select=c(4,5,7,8,13, 393,394))
+
+
+
+#Buscar individus de les onades
+
+comuns12<-merge(w1psel,w2psel,by.x ="IDHOUS13", by.y="IDHOUS14", incomparables = NA)
+comuns123<-merge(comuns12,w3psel,by.x ="IDHOUS13", by.y="IDHOUS15", incomparables = NA)
+
+en1noen2<-subset(w1psel,!w1psel$IDHOUS13%in%w2psel$IDHOUS14)
+nomesen1<-subset(en1noen2,!en1noen2$IDHOUS13%in%w3psel$IDHOUS15)
+
+en1noen2sien3<-subset(en1noen2,en1noen2$IDHOUS13%in%w3psel$IDHOUS15)
+en1noen2sien3id<-subset(en1noen2sien3,select=1)
+
+en1i2<-subset(w1psel,w1psel$IDHOUS13%in%w2psel$IDHOUS14)
+en1i2noen3<-subset(en1i2,!en1i2$IDHOUS13%in%w3psel$IDHOUS15)
+
+# Tenim un total de 1691 individus
+
+
+#Bases de dades w1p,w2p,w3p definitives amb els individus comuns en les bases de dades
+
+w1pindividu<-list(nomesen1$IDHOUS13,comuns123$IDHOUS13,en1noen2sien3$IDHOUS13,
+                    en1i2noen3$IDHOUS13)
+
+w1pindividus<- matrix(unlist(w1pindividu),ncol= 1,byrow=T)  
+
+w1pdef<-subset(w1psel,w1psel$IDHOUS13%in%w1pindividus)
+
+w2pindividu<-list(comuns123$IDHOUS13,en1i2noen3$IDHOUS13)
+w2pindividus<- matrix(unlist(w2pindividu),ncol= 1,byrow=T)  
+
+w2pdef<-subset(w2psel,w2psel$IDHOUS14%in%w2pindividus)
+
+w3pindividu<-list(comuns123$IDHOUS13,en1noen2sien3$IDHOUS13)
+w3pindividus<- matrix(unlist(w3pindividu),ncol= 1,byrow=T)  
+
+w3pdef<-subset(w3psel,w3psel$IDHOUS15%in%w3pindividus)
+
+#Bases w amb només els individus amb informació personal i de la llar
+
+w1def<-subset(w1sel,w1sel$IDHOUS13%in%w1pdef$IDHOUS13)
+w1def<-subset(w1def,select=c(1:14))
+
+w2def<-subset(w2sel,w2sel$IDHOUS14%in%w2pdef$IDHOUS14)
+w2def<-subset(w2def,select=c(1:16))
+
+w3def<-subset(w3sel,w3sel$IDHOUS15%in%w3pdef$IDHOUS15)
+w3def<-subset(w3def,select=c(1:16))
+w3def<-subset(w3def,!w3def$IDHOUS15==7451100 
+              &!w3def$IDHOUS15==7401100 &!w3def$IDHOUS15==7291100)
+
+#Només ID dels individus que tenim tota la informació la personal i de la casa
+
+comuns12f<-merge(w1def,w2def,by.x ="IDHOUS13", by.y="IDHOUS14", incomparables = NA)
+comuns123f<-merge(comuns12f,w3def,by.x ="IDHOUS13", by.y="IDHOUS15", incomparables = NA)
+comuns123id<-subset(comuns123f,select=1)
+
+en1noen2f<-subset(w1def,!w1def$IDHOUS13%in%w2def$IDHOUS14)
+nomesen1f<-subset(en1noen2f,!en1noen2f$IDHOUS13%in%w3def$IDHOUS15)
+nomesen1id<-subset(nomesen1f,select=1)
+
+en1noen2sien3f<-subset(en1noen2f,en1noen2f$IDHOUS13%in%w3def$IDHOUS15)
+en1noen2sien3id<-subset(en1noen2sien3f,select=1)
+
+en1i2f<-subset(w1def,w1def$IDHOUS13%in%w2def$IDHOUS14)
+en1i2noen3f<-subset(en1i2f,!en1i2f$IDHOUS13%in%w3def$IDHOUS15)
+en1i2noen3id<-subset(en1i2noen3f,select=1)
+
+#Qui ha marxat?
+
+#Afegeixo edat fill referècia, gènere i temps compartit màxim actualment a w1 (anomenem aux i tractarem aux)
+
+auxp<-subset(w1pdef,select=c(2,3,4,5,6))
+auxp$ID<-w1pdef$IDHOUS13
+aux<-merge(w1def,auxp,by.x ="IDHOUS13", by.y="IDHOUS13", incomparables = NA)
+
+aux<-subset(aux,select=-19)
+
+#Elimino individus que tenen valors negatius per actual temps compartint casa,
+# que corresponen amb individus de tipologies que han marxat de casa HLDTYPE13=
+# 3,13 però com tenen valor negatiu no es pot saber quan marxen
+
+#Elimino individus que estan fora del rang d'edat estudiat
+
+aux<-subset(aux,!aux$MAXCOH13<0)
+aux<-subset(aux,aux$BIRTHY>1986 )
+
+#Elimino alguns altres individus dels quals falten dades necessàries
+aux <- subset(aux,!aux$IDHOUS13==5054100 & !aux$IDHOUS13==1624204 
+              & !aux$IDHOUS13==46463006 & !aux$IDHOUS13==1404202 
+              & !aux$IDHOUS13==4059100 &!aux$IDHOUS13==55352001
+              &!aux$IDHOUS13==55353003 )
+
+
+
+# VARIABLE HA MARXAT EN W1 ( 1 ÉS QUE SI)
+
+x<-aux$AGE13
+y<-aux$MAXCOP13
+z<-aux$NBKID13
+a<-aux$ADUK1_13
+b<-aux$ADUK2_13
+c<-aux$HLDTYP13
+xyz<-rep(0,length(x))
+
+xyz[(x>0 & y>=0)&(x>=y & y<10)& (c==13| c==3 | c==7) & a+b+z==0]<-1
+sum(subset(xyz,xyz==1)) #92 ja havien marxat en w1
+aux$hamarxat<-xyz
+
+# VARIABLE HA MARXAT EN W2 
+
+#Afegeixo edat fill referència i temps compartit màxim actualment a w2
+
+auxp2<-subset(w2pdef,select=c(2,4,5))
+auxp2$ID<-w2pdef$IDHOUS14
+aux2<-merge(w2def,auxp2,by.x ="IDHOUS14", by.y="IDHOUS14", incomparables = NA)
+#all.equal(aux2$IDHOUS14,aux2$ID)
+#fer prova per confirmar si ha fet bé
+aux2<-subset(aux2,select=-19)
+
+#Eliminació d'individus que faltaven dades necessàries (eren comuns a onades 1 i 2)
+aux2<-subset(aux2,!aux2$IDHOUS14==7071100 & !aux2$IDHOUS14==1624204 
+             & !aux2$IDHOUS14==46463006 &!aux2$IDHOUS14==55352001 
+             &!aux2$IDHOUS14==55353003  )
+
+
+# VARIABLE HA MARXAT EN W2 ( 1 ÉS QUE SÍ)
+
+x<-aux2$AGE14
+y<-aux2$MAXCOP14
+z<-aux2$NBKID14
+a<-aux2$ADUK1_14
+b<-aux2$ADUK2_14
+c<-aux2$HLDTYP14
+d<-aux2$H14H06
+xyz<-rep(0,length(x))
+
+xyz[((x>0 & y>=0)&(x>=y)& (c==13| c==3|c==7) & (a+b+z==0))|((c==13|
+              c==3|c==7|c==-8) & (a+b+z==0))]<-1
+sum(subset(xyz,xyz==1)) #73 ja havien marxat en w2
+aux2$hamarxat2<-xyz
+
+
+#Afegeixo edat fill referència i temps compartit màxim actualment a w3
+
+auxp3<-subset(w3pdef,select=c(2,4,5))
+auxp3$ID<-w3pdef$IDHOUS15
+aux3<-merge(w3def,auxp3,by.x ="IDHOUS15", by.y="IDHOUS15", incomparables = NA)
+all.equal(aux3$IDHOUS15,aux3$ID)
+
+#Eliminació d'individus que faltaven dades necessàries (eren comuns onades 1 i 3)
+aux3<-subset(aux3,!aux3$IDHOUS15==7071100 & !aux3$IDHOUS15==7011100
+             & !aux3$IDHOUS15==1624204 & !aux3$IDHOUS15==46463006 
+             &!aux3$IDHOUS15==55352001 &!aux3$IDHOUS15==55353003
+             &!aux3$IDHOUS15==7291100 &!aux3$IDHOUS15==7451100 
+             &!aux3$IDHOUS15==7401100 &!aux3$IDHOUS15==7291100)
+
+
+
+# VARIABLE HA MARXAT EN W3 ( 1 ÉS QUE SÍ)
+
+x<-aux3$AGE15
+y<-aux3$MAXCOP15
+z<-aux3$NBKID15
+a<-aux3$ADUK1_15
+b<-aux3$ADUK2_15
+c<-aux3$HLDTYP15
+d<-aux3$H15H06
+xyz<-rep(0,length(x))
+
+xyz[((x>0 & y>=0)&(x>=y)& (c==13| c==3|c==7) & (a+b+z==0))|((c==13|
+    c==3|c==7|c==-8) & (a+b+z==0))]<-1
+sum(subset(xyz,xyz==1)) 
+aux3$hamarxat3<-xyz
+
+prova1<-subset(aux,aux$hamarxat==1)
+prova2<-subset(aux2,aux2$hamarxat2==1)
+length(unique(c(prova1$IDHOUS13,prova2$IDHOUS14)))
+prova3<-subset(aux3,aux3$hamarxat3==1)
+length(unique(c(prova1$IDHOUS13,prova2$IDHOUS14,prova3$IDHOUS15)))
+
+# QUANTS PARES HI HA: SI ÉS 0 Inclou als independitzats eh!
+
+
+a<-aux$HLDTYP13
+b<-aux$NBADUL13
+d<-aux$NBKID13
+e<-aux$ADUK1_13
+f<-aux$ADUK2_13
+abc<-rep(0,length(a))
+abc[a %in% 6:11]<-2
+abc[a==4|a==5]<-1
+form=b-(e+f)
+abc[a==-8 & d+e+f>=1]<-form[a==-8 & d+e+f>=1]
+aux$numeropares<-abc
+
+# W2
+
+
+a<-aux2$HLDTYP14
+b<-aux2$NBPERS14
+d<-aux2$NBKID14
+e<-aux2$ADUK1_14
+f<-aux2$ADUK2_14
+abc<-rep(0,length(a))
+abc[a %in% 6:11]<-2
+abc[a==4|a==5]<-1
+form=b-(d+e+f)
+abc[a%in%c(-8,13)& d+e+f>=1]<-form[a%in%c(-8,13) & d+e+f>=1] 
+aux2$numeropares<-abc
+
+
+# PER A W3
+
+a<-aux3$HLDTYP15
+b<-aux3$NBPERS15
+d<-aux3$NBKID15
+e<-aux3$ADUK1_15
+f<-aux3$ADUK2_15
+abc<-rep(0,length(a))
+abc[a %in% 6:11]<-2
+abc[a==4|a==5]<-1
+form=b-(d+e+f)
+abc[a%in%c(-8,13) & d+e+f>=1]<-form[a%in%c(-8,13) & d+e+f>=1] 
+aux3$numeropares<-abc
+
+#VIU AMB UN GERMÀ (1) O ÉS FILL ÚNIC/VIU SOL ARA (1)
+
+#w1
+# Fill únic?
+
+x<-aux$NBKID13
+y<-aux$ADUK1_13
+z<-aux$ADUK2_13
+xyz<-rep(0,length(x))
+xyz[x+y+z==1]<-1
+aux$fillunic<-xyz
+
+# té germà?
+
+x<-aux$NBKID13
+y<-aux$ADUK1_13
+z<-aux$ADUK2_13
+xyz<-rep(0,length(x))
+xyz[x+y+z>1]<-1
+aux$tegerma<-xyz
+
+
+#W2
+
+#FILL ÚNIC?
+
+x<-aux2$NBKID14
+y<-aux2$ADUK1_14
+z<-aux2$ADUK2_14
+xyz<-rep(0,length(x))
+xyz[x+y+z==1]<-1
+aux2$fillunic<-xyz
+
+#Té germà?
+
+x<-aux2$NBKID14
+y<-aux2$ADUK1_14
+z<-aux2$ADUK2_14
+xyz<-rep(0,length(x))
+xyz[x+y+z>1]<-1
+aux2$tegerma<-xyz
+
+
+#W3
+
+#FILL ÚNIC
+
+x<-aux3$NBKID15
+y<-aux3$ADUK1_15
+z<-aux3$ADUK2_15
+xyz<-rep(0,length(x))
+xyz[x+y+z==1]<-1
+aux3$fillunic<-xyz
+
+#Té germà?
+
+x<-aux3$NBKID15
+y<-aux3$ADUK1_15
+z<-aux3$ADUK2_15
+xyz<-rep(0,length(x))
+xyz[x+y+z>1]<-1
+aux3$tegerma<-xyz
+
+
+########################################################################
+
+
+#CALENDAR
+
+
+noref<-subset(calendar,!calendar$IDHOUS13%in%aux$IDHOUS13)
+nrow(noref) # elimino aquells individus que estan a calendari però no tenim dades d'ells en els fitxers d'individus
+
+calendar<-subset(calendar,calendar$IDHOUS13%in%aux$IDHOUS13)
+
+
+#FILLS UNICS SEMPRE AMB CAP DISRUPCIÓ ALS PARES 
+
+s1<-subset(aux,!aux$IDHOUS13%in%calendar$IDHOUS13,select = 
+             c("IDHOUS13","REFPER13","HLDTYP13","BIRTHY","hamarxat","MAXCOH13"))
+
+#Els individus que ja havien marxat al 2013 i no tenen informació en el calendari no podem saber quina trajectòria familiar havien seguit més que no han 
+#tingut germans (podrien haver estat monoparental o biparental sempre)
+
+s1<-subset(s1,!s1$hamarxat==1)
+
+l.s1.fix<-split(s1,s1$IDHOUS13)
+
+f.1.1<-function(v){  # v és element de l.s1.fix
+  v<-as.numeric(v)
+  numNA<-27-(2013-v[4])  # NA's a posar per completar trajectòria fins 27 anys
+  
+  #if(v[5]==0){   # Si els individus no han marxat de casa
+    
+    if(v[3]%in%c(4:5)){          # es tracta de families monoparentals
+      
+      output<-c(v[1:2],rep("MP",2013-v[4]+1),rep(NA,numNA-1))
+    } 
+    else
+      if(v[3]%in%c(8,11)){      # es tracta de families biparentals
+        
+        output<-c(v[1:2],rep("BP",2013-v[4]+1),rep(NA,numNA-1))
+      } 
+    else
+        if(v[3]%in%c(9,10)){  # es tracta de families biparentals amb germans
+          
+          output<-c(v[1:2],rep("BPG",2013-v[4]+1),rep(NA,numNA-1))
+        }
+    else{ # Per aquells casos "12" que es tracta d'altres membres relacionats
+      
+          output<-c(v[1:2],rep("A",2013-v[4]+1),rep(NA,numNA-1))
+          }
+  
+  output
+}
+
+
+l.s1.fix.cal.seq<-lapply(l.s1.fix,"f.1.1")
+
+dat1<- matrix(unlist(l.s1.fix.cal.seq),ncol= 29,byrow=T )  
+dat1 <- data.frame(dat1)
+
+
+#############################################
+
+# Estats al 2014 i 15
+
+# 2014
+
+x<-aux2$tegerma
+y<-aux2$numeropares
+z<-aux2$hamarxat2
+a<-aux2$HLDTYP14
+al2014<-rep(NA,length(x))
+
+al2014[z==1 |a==3 |a==7]<-"marxat"
+al2014[a==12]<-"A"
+al2014[x==1 & y>1 & !a==12]<-"BPG"
+al2014[x==0 & y>1 & !a==12]<-"BP"
+al2014[x==1 & y==1]<-"MPG"
+al2014[x==0 & y==1]<-"MP"
+
+
+aux2$al2014<-al2014
+
+
+# estat 2015
+
+x<-aux3$tegerma
+y<-aux3$numeropares
+z<-aux3$hamarxat3
+a<-aux3$HLDTYP15
+al2015<-rep(NA,length(x))
+
+al2015[z==1 | a==3 |a==7]<-"marxat"
+al2015[a==12]<-"A"
+al2015[x==1 & y>1 & !a==12]<-"BPG"
+al2015[x==0 & y>1 & !a==12]<-"BP"
+al2015[x==1 & y==1]<-"MPG"
+al2015[x==0 & y==1]<-"MP"
+
+
+aux3$al2015<-al2015
+
+
+##########################################################################
+
+# 2) Individus que  a w1 ja havien marxat (sense els que no surten al calendari)
+
+# Subset indica que l'individu ja havia marxat al 2013 (hamarxat==1)
+
+s2<-subset(aux,aux$hamarxat==1,select = c("IDHOUS13","REFPER13","HLDTYP13",
+                                          "BIRTHY","MAXCOH13"))
+s2<-subset(s2,!s2$IDHOUS13%in%s1$IDHOUS13)
+
+calendars2<-subset(calendar,calendar$IDHOUS13%in%s2$IDHOUS13)
+
+l.s2.marxats<-split(s2,s2$IDHOUS13)
+l.s2.marxats.cal<-split(calendars2,calendars2$IDHOUS13)
+
+a<-which(!names(l.s2.marxats)%in%names(l.s2.marxats.cal))
+
+l.s2.marxats<-l.s2.marxats[-a]
+
+
+f.2<-function(v){    # v element l.s2.marxats 
+  v<-as.numeric(v)
+  f<-subset(calendars2, calendars2$IDHOUS13==v[1])
+  anysforadecasa<-v[5]
+  anymarxa<-2013-v[5]
+  numNA<-27-(2013-v[4]) # NA's a posar per completar trajectòria fins 27 anys
+  c1<-!f[,5]%in%c(9:16,19:20) # No hi ha ruptura o mort de pares ni repartnering
+  c1sum<-sum(c1, na.rm=TRUE) 
+  cond1<-c1sum==length(c1)
+  c2<-!f[,5]%in% c(7,8,21,28:30) # Mai hi hagut altre fill que el de referència
+  c2sum<-sum(c2, na.rm=TRUE) 
+  cond2<-c2sum==length(c2)
+  c3<-!f[,5]%in% c(11:16) # No hi ha remarriage d'algun pare
+  c3sum<-sum(c3, na.rm=TRUE) 
+  cond3<-c3sum==length(c3)
+  c4<-!f[,5]%in% c(6,11:16,29:30) # No hi ha registre de marriage o stepsibling
+  c4sum<-sum(c4, na.rm=TRUE) 
+  cond4<-c4sum==length(c4)
+  
+  if(cond1){      # mai hi hagut divorci o mort pares
+    
+    if(v[4]>f[1,4]){       # individu neix que ja hi havia un germà
+      
+      output <- c(v[1:2],rep("BPG",anymarxa-v[4]),
+                  rep("marxat",1),rep(NA,2013-anymarxa) ,rep(NA,numNA-1))
+      } 
+    else{       # el germà neix més tard que l'individu
+      
+      anyssol<-f[1,4]-v[4]        # Anys que passen abans de neixer el germà
+      output <- c(v[1:2],rep("BP",anyssol),rep("BPG",anymarxa-f[1,4])
+                  ,rep("marxat",1),rep(NA,2013-anymarxa),rep(NA,numNA-1))
+      }
+    }
+  else{     # Hi hagut divorci o mort pares
+    
+      if(cond2){ # Mai hi hagut altre fill que el de referència
+       
+        if(cond3){      # No hi ha remarriage d'algun pare
+        
+           j<-which(f[,5]%in% c(9:10,17:20))[1] 
+           any1p <- f[j,4] # Any divorci o mort
+           output <- c(v[1:2],rep("BP",any1p-v[4]),rep("MP",anymarxa-any1p)
+                     ,rep("marxat",1),rep(NA,2013-anymarxa),rep(NA,numNA-1))
+         } 
+        else{      # Hi ha remarriage 
+          
+         j<-which(f[,5]%in% c(6,11:16))[1] 
+         any2p <- f[j,4] #any remarriage
+         output <- c(v[1:2],rep("MP",any2p-v[4]),rep("BP",anymarxa-any2p)
+                     ,rep("marxat",1),rep(NA,2013-anymarxa),rep(NA,numNA-1))
+         }
+      }
+    else{   # Hi ha més fills
+      if(f[1,5]%in% c(9:10,17:20)){ # El primer que passa és un divorci, mort
+          
+          j<-which(f[,5]%in% c(9:10,17:20))[1] 
+          any1p <- f[j,4] #any divorci o mort
+          i<-which(f[,5]%in% c(7,8,21,28:30))[1] 
+          any2fills <- f[i,4] #any ja hi ha dos fills
+          output <- c(v[1:2],rep("BP",any1p-v[4]),rep("MP",any2fills-any1p),
+                    rep("BPG",anymarxa-any2fills),rep("marxat",1),
+                    rep(NA,2013-anymarxa), rep(NA,numNA-1))
+        }
+      else{ # El primer que passa és que neix un fill, o el de ref o un germà
+        
+        if(v[4]>f[1,4]) { # individu referència neix que ja hi havia un germà
+          
+          if(cond4){ # No hi ha registre de marriage o stepsibling
+              j<-which(f[,5]%in% c(9:10,19:20))[1]
+              any1p <- f[j,4]    # Any es divorcien, separen o mor un pare
+              output<-c(v[1:2],rep("BPG",any1p-v[4]),rep("MPG",anymarxa-any1p),
+                        rep("marxat",1),rep(NA,2013-anymarxa),rep(NA,numNA-1))
+            }
+          else{   # Hi ha registre de remarriage o stepsibling
+            
+              j<-which(f[,5]%in% c(9:10,19:20))[1]
+              any1p <- f[j,4]   # Any es divorcien, separen o mor un pare
+              k<-which(f[,5]%in% c(6,11:16,29:30))[1] 
+              any2p<- f[k,4]   # Any remarriage o stepsibling
+              output<-c(v[1:2],rep("BPG",any1p-v[4]),rep("MPG",any2p-any1p),
+                        rep("BPG",anymarxa-any2p),rep("marxat",1),
+                        rep(NA,2013-anymarxa),rep(NA,numNA-1))
+              }
+          } 
+        else{    # El germà arriba més tard
+          
+          if(cond4){ # No hi ha registre de marriage o stepsibling
+              i<-which(f[,5]%in% c(7:8,21,28))[1]
+              anyneixgerma <- f[i,4] 
+              j<-which(f[,5]%in% c(9:10,19:20))[1]
+              any1p <- f[j,4] #Any es divorcien, separen o mor un pare
+              output<-c(v[1:2],rep("BP",anyneixgerma-v[4]),
+                        rep("BPG",any1p-anyneixgerma),rep("MPG",anymarxa-any1p),
+                        rep("marxat",1), rep(NA,2013-anymarxa),rep(NA,numNA-1))
+            }
+          else{    # Hi ha registre de remarriage o stepsibling
+            
+              i<-which(f[,5]%in% c(7:8,21,28,29))[1]
+              anyneixgerma <- f[i,4] 
+              j<-which(f[,5]%in% c(9:10,19:20,29))[1]
+              any1p <- f[j,4] # Any es divorcien, separen o mor un pare
+              k<-which(f[,5]%in% c(13:16,29:30))[1] 
+              any2p<- f[k,4]  # Any remarriage o stepsibling
+              output<-c(v[1:2],rep("BP",anyneixgerma-v[4]),
+                        rep("BPG",any1p-anyneixgerma),rep("MPG",any2p-any1p),
+                        rep("BPG",anymarxa-any2p),rep("marxat",1),
+                        rep(NA,2013-anymarxa), rep(NA,numNA-1))
+              }
+            }
+            
+        }
+      }
+    }
+output
+  }
+      
+l.s2.marxats.seq<-lapply(l.s2.marxats,"f.2")
+
+
+dat2<- matrix(unlist(l.s2.marxats.seq),ncol= 29,byrow=T )  
+dat2<- data.frame(dat2)
+
+###############################################################
+
+# 3) Viuen amb altres familiars 
+# Subset indica que HLDTYP13==12 viuen amb altres familiars al 2013 i  
+# hamarxat==0 indica que no han marxat de casa
+
+s3<-subset(aux, aux$HLDTYP13==12 & aux$hamarxat==0, select = 
+            c("IDHOUS13","REFPER13","HLDTYP13","BIRTHY","MAXCOH13","tegerma"))
+
+calendars3<-subset(calendar,calendar$IDHOUS13%in%s3$IDHOUS13)
+
+l.s3.altfam<-split(s3,s3$IDHOUS13)
+l.s3.altfam.cal<-split(calendars3,c(calendars3$IDHOUS13))
+a<-which(!names(l.s3.altfam)%in%names(l.s3.altfam.cal))
+l.s3.altfam<-l.s3.altfam[-a]
+
+
+f.3<-function(v){    # v element l.s3.altfan
+  v<-as.numeric(v)
+  f<-subset(calendars3, calendars3$IDHOUS13==v[1])
+  numNA<-27-(2013-v[4]) # NA's a posar per completar trajectòria fins 27 anys
+  c1<-!f[,5]%in%c(9:16,19:20) # No hi ha ruptura o mort de pares ni repartnering
+  c1sum<-sum(c1, na.rm=TRUE) 
+  cond1<-c1sum==length(c1)
+  c2<-!f[,5]%in% c(7,8,21,28:30) # Mai hi hagut altre fill que el de referència
+  c2sum<-sum(c2, na.rm=TRUE) 
+  cond2<-c2sum==length(c2)
+  c3<-!f[,5]%in% c(11:16) # No hi ha remarriage d'algun pare
+  c3sum<-sum(c3, na.rm=TRUE) 
+  cond3<-c3sum==length(c3)
+  c4<-!f[,5]%in% c(6,11:16,29:30) # No hi ha registre de marriage o stepsibling
+  c4sum<-sum(c4, na.rm=TRUE) 
+  cond4<-c4sum==length(c4)
+  
+  if(cond1){      # mai hi hagut divorci o mort pares
+    
+    if(v[4]>f[1,4]){       # individu neix que ja hi havia un germà
+      
+      output <- c(v[1:2],rep("BPG",2013-v[4]),
+                  rep("A",1),rep(NA,numNA-1))
+    } 
+    else{       # el germà neix més tard que l'individu
+      
+      anyssol<-f[1,4]-v[4]        # Anys que passen abans de neixer el germà
+      output <- c(v[1:2],rep("BP",anyssol),rep("BPG",2013-f[1,4])
+                  ,rep("A",1),rep(NA,numNA-1))
+    }
+  }
+  else{     # Hi hagut divorci o mort pares
+    
+    if(cond2){ # Mai hi hagut altre fill que el de referència i no remarriage o 
+              # half-brother
+        
+        j<-which(f[,5]%in% c(9:10,17:20))[1] 
+        any1p <- f[j,4] # Any divorci o mort
+        output <- c(v[1:2],rep("BP",any1p-v[4]),rep("A",2013-any1p+1)
+                    ,rep(NA,numNA-1))
+    }
+    else{   # Hi ha m?s fills
+      if(f[1,5]%in% c(9:10,17:20)){ # El primer que passa és un divorci, mort
+        
+        j<-which(f[,5]%in% c(9:10,17:20))[1] 
+        any1p <- f[j,4] #any divorci o mort
+        i<-which(f[,5]%in% c(7,8,21,28:30))[1] 
+        any2fills <- f[i,4] #any ja hi ha dos fills
+        output <- c(v[1:2],rep("BP",any1p-v[4]),rep("MP",any2fills-any1p),
+                    rep("BPG",2013-any2fills),rep("A",1),
+                    rep(NA,numNA-1))
+      }
+      else{ # El primer que passa és que neix un fill, o el de ref o un germà
+        
+        if(v[4]>f[1,4]) { # individu referència neix que ja hi havia un germà
+          
+          if(cond4){ # No hi ha registre de marriage o stepsibling
+            j<-which(f[,5]%in% c(9:10,19:20))[1]
+            any1p <- f[j,4]    # Any es divorcien, separen o mor un pare
+            output<-c(v[1:2],rep("BPG",any1p-v[4]),rep("MPG",2013-any1p),
+                      rep("A",1),rep(NA,numNA-1))
+          }
+          else{   # Hi ha registre de remarriage o stepsibling
+            j<-which(f[,5]%in% c(9:10,19:20))[1]
+            any1p <- f[j,4]   # Any es divorcien, separen o mor un pare
+            k<-which(f[,5]%in% c(6,11:16,29:30))[1] 
+            any2p<- f[k,4]   # Any remarriage o stepsibling
+            if(any1p>=any2p){ #stepsibling abans que divorci
+              output<-c(v[1:2],rep("BPG",2013-v[4]),rep("A",1),
+                        rep(NA,numNA-1))
+            }
+            else{
+            
+            output<-c(v[1:2],rep("BPG",any1p-v[4]),rep("MPG",any2p-any1p),
+                      rep("BPG",2013-any2p),rep("A",1),
+                      rep(NA,numNA-1))
+            }
+          }
+        } 
+        else{    # El germà arriba més tard
+            i<-which(f[,5]%in% c(7:8,21,28))[1]
+            anyneixgerma <- f[i,4] 
+            j<-which(f[,5]%in% c(9:10,19:20))[1]
+            any1p <- f[j,4] #Any es divorcien, separen o mor un pare
+            output<-c(v[1:2],rep("BP",anyneixgerma-v[4]),
+                      rep("BPG",any1p-anyneixgerma),rep("MPG",2013-any1p),
+                      rep("A",1),rep(NA,numNA-1))
+          }
+        
+    }
+   }
+  }
+  
+  output
+}
+  
+
+l.s3.altfam.seq<-lapply(l.s3.altfam,"f.3")
+
+dat3<- matrix(unlist(l.s3.altfam.seq),ncol= 29,byrow=T )  
+dat3 <- data.frame(dat3)
+
+
+##########################################################
+
+# 4) Un sol pare i més d'un fill
+
+#Subset que indica que al 2013 el número de pares és 1 i tegerma==1 indica que el 
+# fill de referència viu amb germans 
+
+s4<-subset(aux, aux$numeropares==1 & aux$tegerma==1 & aux$hamarxat==0,select = 
+             c("IDHOUS13","REFPER13","HLDTYP13","BIRTHY") ) 
+
+calendars4<-subset(calendar,calendar$IDHOUS13%in%s4$IDHOUS13)
+
+l.s4.1p.germ<-split(s4,s4$IDHOUS13)
+l.s4.1p.germ<-l.s4.1p.germ[-53]
+
+l.s4.1p.germ.cal<-split(calendars4,calendars4$IDHOUS13)
+
+
+
+f.4<-function(v){ #v element l.s4.1p1fill 
+  v<-as.numeric(v)
+  f<-subset(calendars4, calendars4$IDHOUS13==v[1])
+  c1<-!f[,5]%in%c(9:10,19:20) # No hi ha ruptura o mort de pares,
+  c1sum<-sum(c1, na.rm=TRUE) 
+  cond1<-c1sum==length(c1)
+  numNA<-27-(2013-v[4])  #NA's a posar per completar trajectòria fins 27 anys
+  
+  if(cond1 & v[4]>f[1,4]){ # No hi ha ruptura o mort de pares, 
+    #sempre ha estat solter i l'ind
+    #va neixer que ja hi havia un
+    #germà 
+    output <-c(v[1:2],rep("MPG",2013-v[4]+1),rep(NA,numNA-1))
+  } 
+  else{
+    if(cond1 & v[4]<=f[1,4]){       #no hi hagut ruptura ni mort 
+      #de pares,sempre ha estat solter no
+      #hi havia germà, arriba més tard
+      anyssol<-f[1,4]-v[4]
+      output <-c(v[1:2],rep("MP",anyssol),rep("MPG",2013-f[1,4]+1),
+                 rep(NA,numNA-1))
+    }else  # Neixen a casa biparental i passen a monoparental per divorci o 
+      #mort pares
+      
+      if(!cond1 & v[4]>f[1,4]){ # individu referència neix que ja hi havia un germà
+        i <- which(f[,5]%in% c(9,10,19,20))[1]
+        anynomes1p <- f[i,4]
+        output <-c(v[1:2],rep("BPG",anynomes1p-v[4]),rep("MPG",2013-anynomes1p),
+                   rep("MPG",1),rep(NA,numNA-1))
+      } 
+    else{ #no hi havia germà, va arribar més tard
+      i <- which(f[,5]%in% c(9,10,19,20))[1]
+      anynomes1p <- f[i,4]
+      anyssol<-f[1,4]-v[4]
+      output <-c(v[1:2],rep("BP",anyssol),rep("BPG",anynomes1p-f[1,4]),
+                 rep("MPG",2013-anynomes1p),
+                 rep("MPG",1),rep(NA,numNA-1))
+    }
+    
+  }
+  output
+}
+  
+l.s4.1p.germ.seq<-lapply(l.s4.1p.germ,"f.4")
+
+
+dat4<- matrix(unlist(l.s4.1p.germ.seq),ncol= 29,byrow=T )  
+dat4 <- data.frame(dat4)
+
+
+#############################################################
+
+# 5) Un sol pare i sense germans al 2013
+
+# Subset indica que només hi ha un pare que no es tenen germans (tegerma==0)
+# i que no ha marxat de casa l'individu
+
+s5<-subset(aux, aux$numeropares==1 & aux$tegerma==0 & aux$hamarxat==0 ,select = 
+             c("IDHOUS13","REFPER13","HLDTYP13","BIRTHY","AGE13") )
+calendars5<-subset(calendar,calendar$IDHOUS13%in%s5$IDHOUS13)
+
+l.s5.1p.noger<-split(s5,s5$IDHOUS13)
+l.s5.1p.noger<-l.s5.1p.noger[-c(2,15,19)]
+l.s5.1p.noger.cal<-split(calendars5,calendars5$IDHOUS13)
+
+f.5<-function(v){ #v element l.s5.1p1fill i f element l.s5.1p1fill.cal
+  v<-as.numeric(v)
+  f<-subset(calendars5, calendars5$IDHOUS13==v[1])
+  numNA<-27-(2013-v[4])  #NA's a posar per completar trajectòria fins 27 anys
+  c1<-!f[,5]%in%c(7:8,21,28:30) # mai ha nascut un germà
+  c1sum<-sum(c1, na.rm=TRUE) 
+  cond1<-c1sum==length(c1)
+  c2<-!f[,5]%in%c(9:10,19:20)  # no hi ha ruptura ni mort de pares, 
+                                          # sempre ha estat solter
+  c2sum<-sum(c2, na.rm=TRUE) 
+  cond2<-c2sum==length(c2)
+  
+  if(cond1){ #mai ha nascut un germà
+    i <- which(f[,5]%in% c(9,10,19,20))[1]
+    anynomes1p <- f[i,4]
+    output <- c(v[1:2],rep("BP",f[i,4]-v[4]),rep("MP",2013-f[1,4]+1),
+                rep(NA,numNA-1))
+    } else
+  if (cond2)  #no hi hagut ruptura ni mort de pares, sempre ha estat solter
+  {
+    if (v[4]>=f[1,4])  #va neixer que ja hi havia un germà però al 2013 no està
+    {  
+      output <- c(v[1:2],rep("MPG",2013-v[4]),rep("MP",1),rep(NA,numNA-1))
+    } else   #no hi havia germà, va arribar més tard, però el germà al 2013 ja no hi és
+    { 
+      anyssol<-f[1,4]-v[4]
+      output <- c(v[1:2],rep("MP",anyssol),rep("MPG",2013-f[1,4]),rep("MP",1),rep(NA,numNA-1))
+    }  
+  } else  #Neixen a casa BIPARENTAL i passen a monoparental per divorci o mort pares
+  {
+    if (v[4]>=f[1,4])  #va neixer que ja hi havia un germà però al 2013 no està el germà
+    {
+      i <- which(f[,5]%in% c(9,10,19,20))[1]
+      anynomes1p <- f[i,4]
+      output <- c(v[1:2],rep("BPG",anynomes1p-v[4]),rep("MPG",2013-anynomes1p),rep("MP",1),rep(NA,numNA-1))
+    } else  #no hi havia germà, va arribar més tard, però el germà al 2013 ja no hi és
+    {
+      anyssol<-f[1,4]-v[4]
+      i <- which(f[,5]%in% c(9,10,19,20))[1]
+      anynomes1p <- f[i,4]
+      output <- c(v[1:2],rep("BP",anyssol),rep("BPG",anynomes1p-f[1,4]),rep("MPG",2013-anynomes1p),rep("MP",1),rep(NA,numNA-1))
+    }
+  }
+  output  
+}
+
+l.s5.1p.noger.seq<-lapply(l.s5.1p.noger,"f.5")  
+
+dat5<- matrix(unlist(l.s5.1p.noger.seq),ncol= 29,byrow=T )  
+dat5 <- data.frame(dat5)
+
+###################################################################
+
+
+# 6) Viuen amb germans i amb dos pares al 2013 
+
+# Subset indica que es té germans (tegerma==1), que es tenen dos pares i que
+# l'individu de referència no ha marxat de casa
+
+
+s6<-subset(aux, aux$tegerma==1 & aux$numeropares==2 & aux$hamarxat==0, select = 
+             c("IDHOUS13","REFPER13","HLDTYP13","BIRTHY" ))
+
+calendars6<-subset(calendar,calendar$IDHOUS13%in%s6$IDHOUS13)
+
+
+l.s6.2p.ger<-split(s6,s6$IDHOUS13)
+l.s6.2p.ger.cal<-split(calendars6,calendars6$IDHOUS13)
+
+
+a<-which(!names(l.s6.2p.ger)%in%names(l.s6.2p.ger.cal))
+l.s6.2p.ger<-l.s6.2p.ger[-a]
+
+f.6<-function(v){ #v element l.s6.2p.ger 
+  v<-as.numeric(v)
+  f<-subset(calendars6, calendars6$IDHOUS13==v[1])
+  numNA<-27-(2013-v[4])  # NA's a posar per completar trajectòria fins 27 anys
+  c1<-!f[,5]%in%c(9:10,13:20) # mai hi hagut divorci o mort pares
+  c1sum<-sum(c1, na.rm=TRUE) 
+  cond1<-c1sum==length(c1)
+  c2<-!f[,5]%in% c(13:16,28:30) # No hi ha registre de marriage o stepsib
+  c2sum<-sum(c2, na.rm=TRUE) 
+  cond2<-c2sum==length(c2)
+  
+  if(cond1){ #mai hi hagut divorci o mort pares
+    
+    if(v[4]>f[1,4]) {#i va neixer que ja hi havia un germà
+      
+      output <- c(v[1:2],rep("BPG",2013-v[4]+1),rep(NA,numNA-1))
+    } 
+    else{ #mai hi hagut divorci o mort pares + un germà va arribar més tard
+        anyssol<-f[1,4]-v[4] #anys que passen abans de neixer el germà
+        output <- c(v[1:2],rep("BP",anyssol),rep("BPG",2013-f[1,4]+1),
+                    rep(NA,numNA-1))
+      } 
+    } else{ #DIVORCIS O MORTS dels pares però viuen amb 2 pares i germans
+      
+      if(f[1,5]%in% c(6,9:20)){ #el primer que passa és un divorci, mort o remarriage
+        j<-which(f[,5]%in% c(7,8,21,28:30))[1] #any registre naixement germà
+        any2fills <- f[j,4] # any reajuntada i fill
+        output<-c(v[1:2],rep("BP",f[1,4]-v[4]),rep("MP",any2fills-f[1,4]),
+                  rep("BPG",2013-any2fills+1), rep(NA,numNA-1))
+      } 
+      else{ #abans del divorci han nascut fills
+        
+        if(v[4]<=f[1,4]) { # va neixer que encara no hi havia germà
+          
+          if(cond2){ # No hi ha registre de marriage o stepsib
+            i<-which(f[,5]%in% c(7:8,21))[1]
+            anyneixgerma <- f[i,4] 
+            j<-which(f[,5]%in% c(9:10,19:20))[1]
+            any1p <- f[j,4] #Any es divorcien, separen o mor un pare
+            output<-c(v[1:2],rep("BP",anyneixgerma-v[4]),
+                      rep("BPG",any1p-anyneixgerma),rep("MPG",2013-any1p),
+                      rep("BPG",1),rep(NA,numNA-1))
+            }
+          else{  # Hi ha registre de remarriage o stepsibling
+            
+            i<-which(f[,5]%in% c(7:8,21))[1]
+            anyneixgerma <- f[i,4] 
+            j<-which(f[,5]%in% c(9:10,19:20))[1]
+            any1p <- f[j,4] #Any es divorcien, separen o mor un pare
+            k<-which(f[,5]%in% c(13:16,28:30))[1] 
+            any2p<- f[k,4] #Any remarriage o stepsibling
+            output<-c(v[1:2],rep("BP",anyneixgerma-v[4]),
+                      rep("BPG",any1p-anyneixgerma),rep("MPG",any2p-any1p),
+                      rep("BPG",2013-any2p+1),rep(NA,numNA-1))}
+          }
+        else{ #Va neixer que ja hi havia germà
+          
+          if(cond2){ #No hi ha registre de marriage o stepsib
+            j<-which(f[,5]%in% c(9:10,19:20))[1]
+            any1p <- f[j,4] #Any es divorcien, separen o mor un pare
+            output<-c(v[1:2],rep("BPG",any1p-v[4]),
+                      rep("MPG",2013-any1p),rep("BPG",1),rep(NA,numNA-1))
+          }
+          else{ # Hi ha registre de remarriage o stepsibling
+            j<-which(f[,5]%in% c(9:10,19:20))[1]
+            any1p <- f[j,4] #Any es divorcien, separen o mor un pare
+            k<-which(f[,5]%in% c(13:16,28:30))[1] 
+            any2p<- f[k,4] #Any remarriage o stepsibling
+            output<-c(v[1:2],rep("BPG",any1p-v[4]),rep("MPG",any2p-any1p),
+                      rep("BPG",2013-any2p+1),rep(NA,numNA-1))
+            } 
+          }
+        }
+    }
+  output
+  }
+
+l.s6.2p.ger.seq<-lapply(l.s6.2p.ger,"f.6")
+
+dat6<- matrix(unlist(l.s6.2p.ger.seq),ncol= 29,byrow=T )  
+dat6 <- data.frame(dat6)
+
+##############################################################################
+
+# 7) Viuen amb dos pares i sense germans (tegerma==0) al 2013 
+
+# Subset indica que no es tenen germans (tegermà==0), que són dos els pares
+# i que l'individu no ha marxat de casa
+
+s7<-subset(aux, aux$tegerma==0 & aux$numeropares==2 & aux$hamarxat==0, select = 
+             c("IDHOUS13","REFPER13","HLDTYP13","BIRTHY" ))
+
+calendars7<-subset(calendar,calendar$IDHOUS13%in%s7$IDHOUS13)
+
+l.s7.2p.noger<-split(s7,s7$IDHOUS13)
+l.s7.2p.noger.cal<-split(calendars7,c(calendars7$IDHOUS13))
+
+a<-which(!names(l.s7.2p.noger)%in%names(l.s7.2p.noger.cal))
+l.s7.2p.noger<-l.s7.2p.noger[-a]
+
+f.7<-function(v){ #v element l.s7.2p.no.ger 
+  v<-as.numeric(v)
+  f<-subset(calendars7, calendars7$IDHOUS13==v[1])
+  numNA<-27-(2013-v[4])  #NA's a posar per completar trajectòria fins 27 anys
+  c1<-!f[,5]%in%c(9:10,13:16,19:20) # mai hi hagut divorci, mort o remarriage
+  c1sum<-sum(c1, na.rm=TRUE) 
+  cond1<-c1sum==length(c1)
+  c2<-f[,5]%in% c(26:27) # va morir el germà abans 2013
+  c2sum<-sum(c2, na.rm=TRUE) 
+  cond2<-c2sum==1
+  c3<-!f[,5]%in% c(7:8,21,28:30) #No neix mai cap germà
+  c3sum<-sum(c3, na.rm=TRUE) 
+  cond3<-c3sum==length(c3)
+  c4<-!f[,5]%in% c(9:10,19:20) # no hi ha registre divorci
+  c4sum<-sum(c4, na.rm=TRUE) 
+  cond4<-c4sum==length(c4)
+  c5<-!f[,5]%in% c(13:16) #No hi ha registre remarriage
+  c5sum<-sum(c5, na.rm=TRUE) 
+  cond5<-c5sum==length(c5)
+  
+  if(cond1){ #mai hi hagut divorci o mort pares
+    
+    if(v[4]>=f[1,4]) {#imd va neixer que ja hi havia un germà
+                                   #que ja no està al 2013
+    output <- c(v[1:2],rep("BPG",2013-v[4]),rep("BP",1),rep(NA,numNA-1))
+    } 
+    else #mai hi hagut divorci o mort pares + un germà va arribar més tard
+                                                     #que ja no està al 2013
+      if(cond2){ # va morir el germà abans 2013
+        i<-which(f[,5]%in% c(26:27))[1] #mor EL GERMÀ
+        anymorgerma <- f[i,4]
+        anyssol<-f[1,4]-v[4] #anys que passen abans de neixer el germà
+        output <- c(v[1:2],rep("BP",anyssol),rep("BPG",anymorgerma-f[1,4]),
+                    rep("BP",2013-anymorgerma+1),rep(NA,numNA-1))
+      }
+    else{
+        anyssol<-f[1,4]-v[4] #anys que passen abans de neixer el germà
+        output <- c(v[1:2],rep("BP",anyssol),rep("BPG",2013-f[1,4]),rep("BP",1),
+                    rep(NA,numNA-1))
+        } 
+    } 
+  else{ #DIVORCIS O MORTS dels pares però viuen amb 2 pares i sense germà
+      
+    if(cond3){ #No neix mai cap germà
+      
+      if(cond4){ # no hi ha registre divorci
+          j<-which(f[,5]%in% c(13:16))[1] #any registre remarrigae
+          any2p <- f[j,4] # any es reajunta un pare
+          output<-c(v[1:2],rep("MP",any2p-v[4]),rep("BP",2013-any2p+1),
+                    rep(NA,numNA-1))
+        } 
+      else{ #hi ha registre divorci
+          if(cond5){ #No hi ha registre remarriage
+            i<-which(f[,5]%in% c(9:10,19:20))[1]
+            any1p <- f[i,4] #Any es divorcien, separen o mor un pare
+            output<-c(v[1:2],rep("BP",any1p-v[4]),rep("MP",2013-any1p),
+                      rep("BP",1),rep(NA,numNA-1))
+          }
+        else{
+            i<-which(f[,5]%in% c(9:10,19:20))[1]
+            any1p <- f[i,4] #Any es divorcien, separen o mor un pare
+            j<-which(f[,5]%in% c(13:16))[1] 
+            any2p <- f[j,4] # any es reajunta un pare
+            output<-c(v[1:2],rep("BP",any1p-v[4]),rep("MP",any2p-any1p),
+                      rep("BP",2013-any2p+1),rep(NA,numNA-1))
+          }
+      }
+      }
+    else{ #NEIXEN GERMANS
+      if(f[1,5]%in%c(9:10,19:20)){ #GERMANS DESPRÉS DEL DIVORCI o mort
+        
+          i<-which(f[,5]%in% c(9:10,19:20))[1] #any divorci/mort
+          any1p <- f[i,4] #Any es divorcien, separen o mor un pare
+          j<-which(f[,5]%in% c(7,8,13:16,21,28:30))[1] 
+          any2p <- f[j,4] # any es reajunta un pare o neix un step-sibling
+          output<-c(v[1:2],rep("BP",any1p-v[4]),rep("MP",any2p-any1p),
+                    rep("BPG",2013-any2p), rep("BP",1),rep(NA,numNA-1))
+        }
+      else { # primer havia nascut un germà i ja després divorci
+          if(cond4){ # no hi ha registre divorci o mort
+            
+            j<-which(f[,5]%in% c(7,8,13:16,21,28:30))[1] 
+            any2p <- f[j,4] # any es reajunta un pare o neix un step-sibling
+            output<-c(v[1:2],rep("MP",any2p-v[4]),rep("BPG",2013-any2p),
+                      rep("BP",1),rep(NA,numNA-1))
+          } 
+        else { #hi ha registre divorci 
+          if(cond5){ #no hi ha registre de remarriage després divorci
+            i<-which(f[,5]%in% c(9:10,19:20))[1]
+            any1p <- f[i,4] #Any es divorcien, separen o mor un pare
+            output<-c(v[1:2],rep("BPG",any1p-v[4]),rep("MP",2013-any1p),
+                      rep("BP",1),rep(NA,numNA-1))
+          } else{
+          i<-which(f[,5]%in% c(9:10,19:20))[1] #any divorci/mort
+          any1p <- f[i,4] #Any es divorcien, separen o mor un pare
+          j<-which(f[,5]%in% c(13:16,21,28:30))[1] 
+          any2p <- f[j,4] # any es reajunta un pare o neix un step-sibling
+          
+          output<-c(v[1:2],rep("BPG",any1p-v[4]),rep("MPG",any2p-any1p),
+                    rep("BPG",2013-any2p),rep("BP",1),rep(NA,numNA-1))
+          }
+        }
+      }
+      } 
+  }
+  output
+}
+
+
+l.s7.2p.noger.seq<-lapply(l.s7.2p.noger,"f.7")
+dat7<- matrix(unlist(l.s7.2p.noger.seq),ncol= 29,byrow=T)  
+dat7 <- data.frame(dat7)
+
+
+######################################################################
+
+# Anàlisi de seqüències 
+
+data<-rbind(dat1,dat2,dat3,dat4,dat5,dat6,dat7)
+colnames(data)[1]<-"IDHOUS"
+
+datalist<-split(data, data$IDHOUS)
+
+#Afegim els estats de 2014 i 2015
+
+
+f.10<-function(h){ #h és data
+  e<-h[1]
+  e<-as.numeric(e)
+  if(e%in%comuns123id$IDHOUS13){ # està als tres anys
+    c<-subset(aux2,aux2$IDHOUS14==e, select = 23)
+    d<-subset(aux3,aux3$IDHOUS15==e, select = 24)
+    i<-which(is.na(h[1:29]))[1]
+    j<-which(is.na(h[1:29]))[2]
+    h[i]<-c
+    h[j]<-d
+    h[30]<-"123"
+    
+  }
+  else{
+    if(e%in%en1i2noen3id$IDHOUS13){ # està el primer any i el segon
+      
+      c<-subset(aux2,aux2$IDHOUS14==e, select = 23)
+      i<-which(is.na(h[1:29]))[1]
+      h[i]<-c
+      h[30]<-"1i2"
+    }
+    else{
+      if(e%in%en1noen2sien3id$IDHOUS13){ # està el primer i el tercer any
+        d<-subset(aux3,aux3$IDHOUS15==e, select = 24)
+        j<-which(is.na(h[1:29]))[2]
+        h[j-1]<-d
+        h[j]<-d
+        h[30]<-"1i3"
+      }
+      else{ #està només a 1
+        
+        h[30]<-"1"
+      }
+    }
+  }
+  h   
+}
+
+
+
+dataf<-lapply(datalist ,"f.10")
+datafinal<- matrix(unlist(dataf),ncol= 30,byrow=T) 
+datafinal<-as.data.frame(datafinal)
+colnames(datafinal)[30]<-"Onada"
+datafinal$Onada<-as.factor(datafinal$Onada)
+table(datafinal$Onada)
+
+colnames(datafinal)[1]<-"IDHOUS"
+colnames(datafinal)[2]<-"REFPER"
+
+#Posem com a nom de les variables d'1 a 27 anys
+
+for (i in 3:29) {
+  colnames(datafinal)[i]<-i-2
+  
+}
+
+###############################################################################
+
+
+
+#ANÀLISI DE SEQÜÈNCIES
+
+data.alphab <- c("A", "BP", "BPG", "MP","MPG", "marxat")
+data.seq<-seqdef(datafinal,3:29,xtstep = 6,alphabet = data.alphab)
+seqcost(data.seq,method="TRATE") #calcula les probabilitats de transició
+fg<-seqtrate(data.seq)
+
+round(fg,3)
+#OM
+
+data.om<-seqdist(data.seq,method="OM", indel=1, sm="TRATE", with.missing = F) #sm= substitution cost, indel= insertion/deletion costs 
+d<-as.dist(data.om)
+str(data.om)
+
+##############################
+
+#Clústers
+
+clusterward<-agnes(data.om, diss=TRUE, method="ward")
+a<-sort(clusterward$height, decreasing = TRUE)
+plot(a, type="b", xlim = c(0,10)) #5
+data.cl4 <- cutree(clusterward, k = 5)
+cl4.lab <- factor(data.cl4, labels = paste("Cluster", 1:5))
+dataclus<-cbind(datafinal,cl4.lab)
+
+#VARIABLE HA MARXAT 0-1 (1 SI)
+
+datafinal$marxat<-rep(0,length(datafinal$IDHOUS))
+datafinal$suma<-rowSums(datafinal[3:29]=="marxat", na.rm=TRUE)
+a<-datafinal$suma
+datafinal$marxat[a>=1]<-1
+dataclus<-cbind(dataclus,datafinal$marxat)
+colnames(dataclus)[32]<-"marxat"
+dataclus$marxat<-as.factor(dataclus$marxat)
+sum(dataclus$marxat==1)
+
+seqIplot(data.seq, with.legend=T,group = cl4.lab, ltext=c("Altres familiars", 
+         "Família biparental","Família biparental amb germans",
+         "Família monoparental","Família monoparental amb germans",
+         "Individu ha marxat de casa"), xtlab=c(1:27),xtstep=2, cex.legend=1.1) #xtstep=1, sortv="from.start"
+
+
+
+############################################################################
+
+
+marxatspercluster<-table("Individu al clúster"=dataclus$cl4.lab,
+                         "Ha marxat de casa"=dataclus$marxat)
+colnames(marxatspercluster)<-c("No", "Sí")
+marxatspercluster1<-addmargins(marxatspercluster,1)
+marxatspercluster1
+
+#Probabilitat de marxar segons cluster ward
+
+tabclus<-table("Individu al clúster"=dataclus$cl4.lab,
+            "Probabilitat que hagi marxat de casa"=dataclus$marxat)
+colnames(tabclus)<-c("No", "Sí")
+tabclus1<-round(addmargins(prop.table(tabclus,1),2),4) #prob suma 1 per clúster
+tabclus1
+
+cbp2 <- c( "lavender","peachpuff2")
+
+ggplot(dataclus, 
+       aes(factor(x = cl4.lab, 
+                  labels = c("1", "2", 
+                             "3", "4", 
+                             "5")),
+           fill = factor(marxat, 
+                         levels = c("0", "1"),
+                         labels = c("No ha marxat de casa", 
+                                    "Ha marxat de casa")))) + 
+  geom_bar(position = "fill") +
+  scale_y_continuous(breaks = seq(0, 1, .2), 
+                     label = percent) +
+  labs(y = "Percentatge", 
+       fill = "Estat individu",
+       x = "Clúster",
+       title = "Estat de l'individu segons clúster Ward") +
+  scale_fill_manual(values = cbp2)+
+  theme_minimal()
+
+
+
+#######################################################################
+
+
+# Clústers kmeans?
+
+set.seed(12)
+clusk8<-kmeans(d,8)
+
+plot(clusk8$withinss, type = "b", lwd=2) # amb 2 o 5 
+
+set.seed(12)
+clusk5<-kmeans(d,5)
+plot(clusk5$withinss, type = "b", lwd=2)
+
+# Comparació clústers de Ward i k-means
+tab<-table(Ward=data.cl4,kmeans=clusk5$cluster)
+tab
+
+fviz_cluster(clusk5, data = d,
+             palette = c("mediumvioletred","lavender", "pink", 
+                         "peachpuff","lightsteelblue2"), 
+             geom = "point",
+             ellipse.type = "convex", 
+             ggtheme = theme_minimal(),
+             legend.title = "Clúster",
+             main="K-means amb 5 clústers"
+)
+
+
+
+# Trajectòries resultants de k-means
+
+seqIplot(data.seq, with.legend=T,group = clusk5$cluster,
+         ltext=c("Altres familiars", "Família biparental",
+                 "Família biparental amb germans","Família monoparental",
+                 "Família monoparental amb germans",
+           "Individu ha marxat de casa"), xtlab=c(1:27),
+         xtstep=2,cex.legend=1,cex.axis=1) 
+
+
+datacluskmeans<-cbind(datafinal,clusk5$cluster)
+
+colnames(datacluskmeans)[33]<-"Clúster"
+datacluskmeans$`Clúster`<-as.factor(datacluskmeans$`Clúster`)
+datacluskmeans2<-merge(datacluskmeans,aux,by.x="IDHOUS", by.y="IDHOUS13")
+datacluskmeans2<-subset(datacluskmeans2,select=c(1:33,47:49))
+
+
+#Probabilitat de marxar segons cluster kmeans
+
+tabclus2<-table("Individu al clúster"=datacluskmeans2$`Clúster`,
+                "Probabilitat que hagi marxat de casa"=datacluskmeans2$marxat)
+colnames(tabclus2)<-c("No", "Sí")
+tabclus21<-round(addmargins(prop.table(tabclus2,1),2),4) #prob suma 1 per clúster
+tabclus21
+
+cbp2 <- c( "lavender","peachpuff2")
+
+ggplot(datacluskmeans2, 
+       aes(factor(x = `Clúster`, 
+                  labels = c("1", "2", 
+                             "3", "4", 
+                             "5")),
+           fill = factor(marxat, 
+                         levels = c("0", "1"),
+                         labels = c("No ha marxat de casa", 
+                                    "Ha marxat de casa")))) + 
+  geom_bar(position = "fill", colour="lightsteelblue") +
+  scale_y_continuous(breaks = seq(0, 1, .2), 
+                     label = percent) +
+  labs(y = "Percentatge", 
+       fill = "Estat individu",
+       x = "Clúster",
+       title = "Estat de l'individu segons clúster k-means") +
+  scale_fill_manual(values = cbp2)+
+  theme_minimal()
+
+
+########################################################################
+
+
+########################################################################
+
+# Anàlisi de supervivència clústers originals (WARD)
+
+dataclus2<-merge(dataclus,aux,by.x="IDHOUS", by.y="IDHOUS13")
+dataclus2<-subset(dataclus2,select=c(1:32,46,47,48))
+
+
+# Afegeixo l'edat survival, és a dir, els anys que no han marxat de casa
+
+a<-dataclus2[,3:29]
+anyssurvivals<-rep(0,length(dataclus2$V1))
+
+
+for (i in 1:length(dataclus2$IDHOUS)){
+  anysrestantper27<-sum(is.na(a[i,]))
+  anyssurvivals[i]<-27-anysrestantper27
+}
+
+dataclus2$anyssurvival<-anyssurvivals
+
+
+#KAPLAN-MEIER
+
+dataclus2$marxat<-as.numeric(levels(dataclus2$marxat))[dataclus2$marxat]
+km <- with(dataclus2, Surv(anyssurvival, marxat))
+head(km,100)
+
+km_fit <- survfit(Surv(anyssurvival, marxat) ~ cl4.lab, data=dataclus2)
+summary(km_fit, times = c(15,21,27*(1:10)))
+
+pal<-c("sandybrown", "hotpink", "lightgoldenrod1",
+       "plum3","pink3", "lightsteelblue1","plum4")
+
+ggsurvplot(km_fit, xlim=c(17,27),  xlab = "Edat dels individus", ylab=
+          "Probabilitat de viure amb els pares", break.time.by = 1, 
+          ggtheme = theme_minimal(),font.title=12,title=
+          "Estimador Kaplan-Meier per l'emancipament dels individus"
+          ,palette=pal,legend.labs = c("Clúster 1", "Clúster 2", "Clúster 3", 
+          "Clúster 4" ,"Clúster 5"))
+
+
+
+logranktest<-survdiff(Surv(anyssurvival, marxat) ~ cl4.lab, data=dataclus2)
+logranktest # diferències significatives entre clusters
+
+cox<-coxph(Surv(anyssurvival, marxat)~cl4.lab, data=dataclus2)
+summary(cox) #totes són significatives però protectores
+
+
+#SI AJUSTO PER GÈNERE i EDAT
+
+coxadj<-coxph(Surv(anyssurvival, marxat) ~ cl4.lab+BIRTHY+SEX13, data=dataclus2)
+coxadj
+
+km_fit2 <- survfit(Surv(anyssurvival, marxat) ~ cl4.lab+SEX13, data=dataclus2)
+
+
+
+########################################################################
