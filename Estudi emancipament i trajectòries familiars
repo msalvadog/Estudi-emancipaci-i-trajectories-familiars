@@ -1354,8 +1354,7 @@ logranktest<-survdiff(Surv(anyssurvival, marxat) ~ cl4.lab, data=dataclus2)
 logranktest # diferències significatives entre clusters
 
 cox<-coxph(Surv(anyssurvival, marxat)~cl4.lab, data=dataclus2)
-summary(cox) #totes són significatives però protectores
-
+summary(cox) #significatius 2 i 5
 
 #SI AJUSTO PER GÈNERE i EDAT
 
@@ -1365,5 +1364,3 @@ coxadj
 km_fit2 <- survfit(Surv(anyssurvival, marxat) ~ cl4.lab+SEX13, data=dataclus2)
 
 
-
-########################################################################
