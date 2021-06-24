@@ -84,6 +84,7 @@ w3pindividus<- matrix(unlist(w3pindividu),ncol= 1,byrow=T)
 
 w3pdef<-subset(w3psel,w3psel$IDHOUS15%in%w3pindividus)
 
+
 #Bases w amb només els individus amb informació personal i de la llar
 
 w1def<-subset(w1sel,w1sel$IDHOUS13%in%w1pdef$IDHOUS13)
@@ -128,16 +129,10 @@ aux<-subset(aux,select=-19)
 # que corresponen amb individus de tipologies que han marxat de casa HLDTYPE13=
 # 3,13 però com tenen valor negatiu no es pot saber quan marxen
 
-#Elimino individus que estan fora del rang d'edat estudiat
+#Elimino individus que estan fora del rang d'edat estudiat i amb temps de marxar de casa negatiu
 
 aux<-subset(aux,!aux$MAXCOH13<0)
 aux<-subset(aux,aux$BIRTHY>1986 )
-
-#Elimino alguns altres individus dels quals falten dades necessàries
-aux <- subset(aux,!aux$IDHOUS13==5054100 & !aux$IDHOUS13==1624204 
-              & !aux$IDHOUS13==46463006 & !aux$IDHOUS13==1404202 
-              & !aux$IDHOUS13==4059100 &!aux$IDHOUS13==55352001
-              &!aux$IDHOUS13==55353003 )
 
 
 
@@ -157,19 +152,14 @@ aux$hamarxat<-xyz
 
 # VARIABLE HA MARXAT EN W2 
 
-#Afegeixo edat fill referència i temps compartit màxim actualment a w2
+#Afegeixo edat fill referència i temps compartit màxim actualment a w2 (el gènere de tots ja el tenim a w1)
 
 auxp2<-subset(w2pdef,select=c(2,4,5))
 auxp2$ID<-w2pdef$IDHOUS14
 aux2<-merge(w2def,auxp2,by.x ="IDHOUS14", by.y="IDHOUS14", incomparables = NA)
-#all.equal(aux2$IDHOUS14,aux2$ID)
-#fer prova per confirmar si ha fet bé
+
 aux2<-subset(aux2,select=-19)
 
-#Eliminació d'individus que faltaven dades necessàries (eren comuns a onades 1 i 2)
-aux2<-subset(aux2,!aux2$IDHOUS14==7071100 & !aux2$IDHOUS14==1624204 
-             & !aux2$IDHOUS14==46463006 &!aux2$IDHOUS14==55352001 
-             &!aux2$IDHOUS14==55353003  )
 
 
 # VARIABLE HA MARXAT EN W2 ( 1 ÉS QUE SÍ)
@@ -185,7 +175,7 @@ xyz<-rep(0,length(x))
 
 xyz[((x>0 & y>=0)&(x>=y)& (c==13| c==3|c==7) & (a+b+z==0))|((c==13|
               c==3|c==7|c==-8) & (a+b+z==0))]<-1
-sum(subset(xyz,xyz==1)) #73 ja havien marxat en w2
+sum(subset(xyz,xyz==1)) #suma de quants han marxat fins a w2
 aux2$hamarxat2<-xyz
 
 
@@ -195,15 +185,6 @@ auxp3<-subset(w3pdef,select=c(2,4,5))
 auxp3$ID<-w3pdef$IDHOUS15
 aux3<-merge(w3def,auxp3,by.x ="IDHOUS15", by.y="IDHOUS15", incomparables = NA)
 all.equal(aux3$IDHOUS15,aux3$ID)
-
-#Eliminació d'individus que faltaven dades necessàries (eren comuns onades 1 i 3)
-aux3<-subset(aux3,!aux3$IDHOUS15==7071100 & !aux3$IDHOUS15==7011100
-             & !aux3$IDHOUS15==1624204 & !aux3$IDHOUS15==46463006 
-             &!aux3$IDHOUS15==55352001 &!aux3$IDHOUS15==55353003
-             &!aux3$IDHOUS15==7291100 &!aux3$IDHOUS15==7451100 
-             &!aux3$IDHOUS15==7401100 &!aux3$IDHOUS15==7291100)
-
-
 
 # VARIABLE HA MARXAT EN W3 ( 1 ÉS QUE SÍ)
 
@@ -221,14 +202,7 @@ xyz[((x>0 & y>=0)&(x>=y)& (c==13| c==3|c==7) & (a+b+z==0))|((c==13|
 sum(subset(xyz,xyz==1)) 
 aux3$hamarxat3<-xyz
 
-prova1<-subset(aux,aux$hamarxat==1)
-prova2<-subset(aux2,aux2$hamarxat2==1)
-length(unique(c(prova1$IDHOUS13,prova2$IDHOUS14)))
-prova3<-subset(aux3,aux3$hamarxat3==1)
-length(unique(c(prova1$IDHOUS13,prova2$IDHOUS14,prova3$IDHOUS15)))
-
-# QUANTS PARES HI HA: SI ÉS 0 Inclou als independitzats eh!
-
+# QUANTS PARES HI HA?: segons la tipologia familiar podem saber el  nombre de pares
 
 a<-aux$HLDTYP13
 b<-aux$NBADUL13
@@ -272,10 +246,12 @@ form=b-(d+e+f)
 abc[a%in%c(-8,13) & d+e+f>=1]<-form[a%in%c(-8,13) & d+e+f>=1] 
 aux3$numeropares<-abc
 
-#VIU AMB UN GERMÀ (1) O ÉS FILL ÚNIC/VIU SOL ARA (1)
+#Funció pels germans
+
+
 
 #w1
-# Fill únic?
+# Fill únic? Si ÉS FILL ÚNIC o VIU SOL ARA (1)
 
 x<-aux$NBKID13
 y<-aux$ADUK1_13
@@ -284,7 +260,7 @@ xyz<-rep(0,length(x))
 xyz[x+y+z==1]<-1
 aux$fillunic<-xyz
 
-# té germà?
+# té germà? Si VIU AMB UN GERMÀ (1) 
 
 x<-aux$NBKID13
 y<-aux$ADUK1_13
@@ -348,10 +324,13 @@ nrow(noref) # elimino aquells individus que estan a calendari però no tenim dad
 calendar<-subset(calendar,calendar$IDHOUS13%in%aux$IDHOUS13)
 
 
+
+#CODIFIQUEM LES TRAJECTÒRIES FINS 2013 (INCLÒS)
+
 #FILLS UNICS SEMPRE AMB CAP DISRUPCIÓ ALS PARES 
 
 s1<-subset(aux,!aux$IDHOUS13%in%calendar$IDHOUS13,select = 
-             c("IDHOUS13","REFPER13","HLDTYP13","BIRTHY","hamarxat","MAXCOH13"))
+             c("IDHOUS13","SEX13","HLDTYP13","BIRTHY","hamarxat","MAXCOH13"))
 
 #Els individus que ja havien marxat al 2013 i no tenen informació en el calendari no podem saber quina trajectòria familiar havien seguit més que no han 
 #tingut germans (podrien haver estat monoparental o biparental sempre)
@@ -394,56 +373,15 @@ l.s1.fix.cal.seq<-lapply(l.s1.fix,"f.1.1")
 dat1<- matrix(unlist(l.s1.fix.cal.seq),ncol= 29,byrow=T )  
 dat1 <- data.frame(dat1)
 
-
-#############################################
-
-# Estats al 2014 i 15
-
-# 2014
-
-x<-aux2$tegerma
-y<-aux2$numeropares
-z<-aux2$hamarxat2
-a<-aux2$HLDTYP14
-al2014<-rep(NA,length(x))
-
-al2014[z==1 |a==3 |a==7]<-"marxat"
-al2014[a==12]<-"A"
-al2014[x==1 & y>1 & !a==12]<-"BPG"
-al2014[x==0 & y>1 & !a==12]<-"BP"
-al2014[x==1 & y==1]<-"MPG"
-al2014[x==0 & y==1]<-"MP"
+###############
 
 
-aux2$al2014<-al2014
-
-
-# estat 2015
-
-x<-aux3$tegerma
-y<-aux3$numeropares
-z<-aux3$hamarxat3
-a<-aux3$HLDTYP15
-al2015<-rep(NA,length(x))
-
-al2015[z==1 | a==3 |a==7]<-"marxat"
-al2015[a==12]<-"A"
-al2015[x==1 & y>1 & !a==12]<-"BPG"
-al2015[x==0 & y>1 & !a==12]<-"BP"
-al2015[x==1 & y==1]<-"MPG"
-al2015[x==0 & y==1]<-"MP"
-
-
-aux3$al2015<-al2015
-
-
-##########################################################################
 
 # 2) Individus que  a w1 ja havien marxat (sense els que no surten al calendari)
 
 # Subset indica que l'individu ja havia marxat al 2013 (hamarxat==1)
 
-s2<-subset(aux,aux$hamarxat==1,select = c("IDHOUS13","REFPER13","HLDTYP13",
+s2<-subset(aux,aux$hamarxat==1,select = c("IDHOUS13","SEX13","HLDTYP13",
                                           "BIRTHY","MAXCOH13"))
 s2<-subset(s2,!s2$IDHOUS13%in%s1$IDHOUS13)
 
@@ -451,6 +389,8 @@ calendars2<-subset(calendar,calendar$IDHOUS13%in%s2$IDHOUS13)
 
 l.s2.marxats<-split(s2,s2$IDHOUS13)
 l.s2.marxats.cal<-split(calendars2,calendars2$IDHOUS13)
+
+#Eliminem els que no estan al calendari
 
 a<-which(!names(l.s2.marxats)%in%names(l.s2.marxats.cal))
 
@@ -586,7 +526,7 @@ dat2<- data.frame(dat2)
 # hamarxat==0 indica que no han marxat de casa
 
 s3<-subset(aux, aux$HLDTYP13==12 & aux$hamarxat==0, select = 
-            c("IDHOUS13","REFPER13","HLDTYP13","BIRTHY","MAXCOH13","tegerma"))
+            c("IDHOUS13","SEX13","HLDTYP13","BIRTHY","MAXCOH13","tegerma"))
 
 calendars3<-subset(calendar,calendar$IDHOUS13%in%s3$IDHOUS13)
 
@@ -707,7 +647,7 @@ dat3 <- data.frame(dat3)
 # fill de referència viu amb germans 
 
 s4<-subset(aux, aux$numeropares==1 & aux$tegerma==1 & aux$hamarxat==0,select = 
-             c("IDHOUS13","REFPER13","HLDTYP13","BIRTHY") ) 
+             c("IDHOUS13","SEX13","HLDTYP13","BIRTHY") ) 
 
 calendars4<-subset(calendar,calendar$IDHOUS13%in%s4$IDHOUS13)
 
@@ -776,7 +716,7 @@ dat4 <- data.frame(dat4)
 # i que no ha marxat de casa l'individu
 
 s5<-subset(aux, aux$numeropares==1 & aux$tegerma==0 & aux$hamarxat==0 ,select = 
-             c("IDHOUS13","REFPER13","HLDTYP13","BIRTHY","AGE13") )
+             c("IDHOUS13","SEX13","HLDTYP13","BIRTHY","AGE13") )
 calendars5<-subset(calendar,calendar$IDHOUS13%in%s5$IDHOUS13)
 
 l.s5.1p.noger<-split(s5,s5$IDHOUS13)
@@ -844,7 +784,7 @@ dat5 <- data.frame(dat5)
 
 
 s6<-subset(aux, aux$tegerma==1 & aux$numeropares==2 & aux$hamarxat==0, select = 
-             c("IDHOUS13","REFPER13","HLDTYP13","BIRTHY" ))
+             c("IDHOUS13","SEX13","HLDTYP13","BIRTHY" ))
 
 calendars6<-subset(calendar,calendar$IDHOUS13%in%s6$IDHOUS13)
 
@@ -946,7 +886,7 @@ dat6 <- data.frame(dat6)
 # i que l'individu no ha marxat de casa
 
 s7<-subset(aux, aux$tegerma==0 & aux$numeropares==2 & aux$hamarxat==0, select = 
-             c("IDHOUS13","REFPER13","HLDTYP13","BIRTHY" ))
+             c("IDHOUS13","SEX13","HLDTYP13","BIRTHY" ))
 
 calendars7<-subset(calendar,calendar$IDHOUS13%in%s7$IDHOUS13)
 
@@ -1081,6 +1021,45 @@ datalist<-split(data, data$IDHOUS)
 
 #Afegim els estats de 2014 i 2015
 
+# Estats al 2014 i 15
+
+# 2014
+
+x<-aux2$tegerma
+y<-aux2$numeropares
+z<-aux2$hamarxat2
+a<-aux2$HLDTYP14
+al2014<-rep(NA,length(x))
+
+al2014[z==1 |a==3 |a==7]<-"marxat"
+al2014[a==12]<-"A"
+al2014[x==1 & y>1 & !a==12]<-"BPG"
+al2014[x==0 & y>1 & !a==12]<-"BP"
+al2014[x==1 & y==1]<-"MPG"
+al2014[x==0 & y==1]<-"MP"
+
+
+aux2$al2014<-al2014
+
+
+# estat 2015
+
+x<-aux3$tegerma
+y<-aux3$numeropares
+z<-aux3$hamarxat3
+a<-aux3$HLDTYP15
+al2015<-rep(NA,length(x))
+
+al2015[z==1 | a==3 |a==7]<-"marxat"
+al2015[a==12]<-"A"
+al2015[x==1 & y>1 & !a==12]<-"BPG"
+al2015[x==0 & y>1 & !a==12]<-"BP"
+al2015[x==1 & y==1]<-"MPG"
+al2015[x==0 & y==1]<-"MP"
+
+aux3$al2015<-al2015
+
+#Creem una variable per saber en quantes onades està
 
 f.10<-function(h){ #h és data
   e<-h[1]
@@ -1130,7 +1109,7 @@ datafinal$Onada<-as.factor(datafinal$Onada)
 table(datafinal$Onada)
 
 colnames(datafinal)[1]<-"IDHOUS"
-colnames(datafinal)[2]<-"REFPER"
+colnames(datafinal)[2]<-"SEX"
 
 #Posem com a nom de les variables d'1 a 27 anys
 
@@ -1166,6 +1145,8 @@ a<-sort(clusterward$height, decreasing = TRUE)
 plot(a, type="b", xlim = c(0,10)) #5
 data.cl4 <- cutree(clusterward, k = 5)
 cl4.lab <- factor(data.cl4, labels = paste("Cluster", 1:5))
+
+#afegim clúster ward pertany cada observació
 dataclus<-cbind(datafinal,cl4.lab)
 
 #VARIABLE HA MARXAT 0-1 (1 SI)
@@ -1189,12 +1170,6 @@ seqIplot(data.seq, with.legend=T,group = cl4.lab, ltext=c("Altres familiars",
 ############################################################################
 
 
-marxatspercluster<-table("Individu al clúster"=dataclus$cl4.lab,
-                         "Ha marxat de casa"=dataclus$marxat)
-colnames(marxatspercluster)<-c("No", "Sí")
-marxatspercluster1<-addmargins(marxatspercluster,1)
-marxatspercluster1
-
 #Probabilitat de marxar segons cluster ward
 
 tabclus<-table("Individu al clúster"=dataclus$cl4.lab,
@@ -1202,6 +1177,8 @@ tabclus<-table("Individu al clúster"=dataclus$cl4.lab,
 colnames(tabclus)<-c("No", "Sí")
 tabclus1<-round(addmargins(prop.table(tabclus,1),2),4) #prob suma 1 per clúster
 tabclus1
+
+#Plot probabilitats
 
 cbp2 <- c( "lavender","peachpuff2")
 
@@ -1232,17 +1209,14 @@ ggplot(dataclus,
 # Clústers kmeans?
 
 set.seed(12)
-clusk8<-kmeans(d,8)
-
-plot(clusk8$withinss, type = "b", lwd=2) # amb 2 o 5 
-
-set.seed(12)
 clusk5<-kmeans(d,5)
 plot(clusk5$withinss, type = "b", lwd=2)
 
 # Comparació clústers de Ward i k-means
 tab<-table(Ward=data.cl4,kmeans=clusk5$cluster)
 tab
+
+#Representació dels clústers k-means
 
 fviz_cluster(clusk5, data = d,
              palette = c("mediumvioletred","lavender", "pink", 
@@ -1265,13 +1239,12 @@ seqIplot(data.seq, with.legend=T,group = clusk5$cluster,
            "Individu ha marxat de casa"), xtlab=c(1:27),
          xtstep=2,cex.legend=1,cex.axis=1) 
 
+#afegim a quin clúster pertany
 
 datacluskmeans<-cbind(datafinal,clusk5$cluster)
 
 colnames(datacluskmeans)[33]<-"Clúster"
 datacluskmeans$`Clúster`<-as.factor(datacluskmeans$`Clúster`)
-datacluskmeans2<-merge(datacluskmeans,aux,by.x="IDHOUS", by.y="IDHOUS13")
-datacluskmeans2<-subset(datacluskmeans2,select=c(1:33,47:49))
 
 
 #Probabilitat de marxar segons cluster kmeans
@@ -1281,6 +1254,8 @@ tabclus2<-table("Individu al clúster"=datacluskmeans2$`Clúster`,
 colnames(tabclus2)<-c("No", "Sí")
 tabclus21<-round(addmargins(prop.table(tabclus2,1),2),4) #prob suma 1 per clúster
 tabclus21
+
+#plot probabilitat
 
 cbp2 <- c( "lavender","peachpuff2")
 
@@ -1304,18 +1279,20 @@ ggplot(datacluskmeans2,
   theme_minimal()
 
 
-########################################################################
-
 
 ########################################################################
 
 # Anàlisi de supervivència clústers originals (WARD)
+
+#tornem a afegir l'edat de l'individu
 
 dataclus2<-merge(dataclus,aux,by.x="IDHOUS", by.y="IDHOUS13")
 dataclus2<-subset(dataclus2,select=c(1:32,46,47,48))
 
 
 # Afegeixo l'edat survival, és a dir, els anys que no han marxat de casa
+# es calculen a partir del final d'observació, ja sigui perque l'últim valor abans dels NA's
+# és marxat o que s'acabi l'observació
 
 a<-dataclus2[,3:29]
 anyssurvivals<-rep(0,length(dataclus2$V1))
